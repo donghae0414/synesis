@@ -1,0 +1,33 @@
+{
+  "name": "synesis",
+  "version": "0.1.0",
+  "description": "Read links and texts together, discuss them, and record what they meant to you as a growing body of knowledge.",
+  "author": {
+    "name": "dongwuk"
+  },
+  "homepage": "https://github.com/dongwuk/synesis",
+  "repository": "https://github.com/dongwuk/synesis",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "codex-plugin",
+    "knowledge",
+    "notes",
+    "reading"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Synesis",
+    "shortDescription": "Knowledge that grows through conversation",
+    "longDescription": "Synesis is a personal knowledge system. Give it a link, a note, or an idea. It reads and discusses the material with you, then records not only what you encountered but what it meant to you. A library remembers information. Synesis remembers understanding.",
+    "developerName": "dongwuk",
+    "category": "Productivity",
+    "capabilities": [
+      "Workflow"
+    ],
+    "defaultPrompt": [
+      "Read this link with me and record my take on it",
+      "What did we conclude about this topic before?"
+    ]
+  }
+}

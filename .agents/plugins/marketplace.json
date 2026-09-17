@@ -1,0 +1,15 @@
+{
+  "name": "synesis",
+  "interface": {
+    "displayName": "Synesis"
+  },
+  "plugins": [
+    {
+      "name": "synesis",
+      "source": {
+        "source": "local",
+        "path": "./plugins/synesis"
+      }
+    }
+  ]
+}
