@@ -8,3 +8,16 @@ A personal knowledge system that grows through conversation.
 
 A library remembers information.  
 Synesis remembers understanding.
+
+## Setup
+
+Ask Codex to "set up synesis". It installs the `insane-search` plugin and its
+dependencies (asking first if your Python is externally managed), detects your
+Obsidian vaults or lets you pick any notes folder (Obsidian is optional), and
+records the confirmed folder in `~/.config/synesis/config.json`.
+
+## Acknowledgments
+
+Synesis reads the web through [`insane-search`](https://github.com/fivetaku/gptaku-plugins-codex/tree/main/plugins/insane-search-codex),
+a Codex plugin by [GPTaku (fivetaku)](https://github.com/fivetaku), distributed under the MIT License.
+The setup skill installs it from the `gptaku-codex` marketplace.
