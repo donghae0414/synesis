@@ -16,6 +16,10 @@ Codex에게 "synesis 설정해줘"라고 요청하세요. `insane-search` 플러
 노트 폴더를 직접 지정할 수 있게 합니다(Obsidian은 선택 사항입니다). 확인된 폴더는
 `~/.config/synesis/config.json`에 기록됩니다.
 
+## 설계 결정
+
+- [지식 저장 구조: 도메인, 세부 주제, MOC](docs/decisions/2026-09-29-knowledge-structure.md) — 구현 계획에서 참조할 합의 내용과 미결정 사항입니다.
+
 ## 감사의 말
 
 Synesis는 웹 문서를 읽을 때 [GPTaku (fivetaku)](https://github.com/fivetaku) 님의 Codex 플러그인

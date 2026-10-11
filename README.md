@@ -16,6 +16,10 @@ dependencies (asking first if your Python is externally managed), detects your
 Obsidian vaults or lets you pick any notes folder (Obsidian is optional), and
 records the confirmed folder in `~/.config/synesis/config.json`.
 
+## Design decisions
+
+- [Knowledge structure: domains, subtopics, and MOCs (Korean)](docs/decisions/2026-09-29-knowledge-structure.md) — Agreed direction and open questions for implementation planning.
+
 ## Acknowledgments
 
 Synesis reads the web through [`insane-search`](https://github.com/fivetaku/gptaku-plugins-codex/tree/main/plugins/insane-search-codex),
