@@ -8,3 +8,9 @@ description: "Use when the user shares a link, article, or raw text and wants to
 Knowledge is not what we collect, but what we come to understand.
 
 This skill is the entry point of the Synesis plugin. The reading, discussion, and recording workflow is not defined yet.
+
+## Writing notes
+
+When you write a note, follow the `plain-korean` skill for every part that you
+write. Keep the user's own words, quotes, code, frontmatter, and links exactly
+as they are.
