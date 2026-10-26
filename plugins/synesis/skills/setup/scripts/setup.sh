@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# synesis setup — installs insane-search, checks its dependencies, and records
+# synesis setup — checks the dependencies of the bundled deep-fetch skill, and records
 # the user's notes folder in ${XDG_CONFIG_HOME:-$HOME/.config}/synesis/config.json.
 #
 # Exit codes: 0 = done, 2 = waiting on user confirmation (not a failure), 1 = fatal.
@@ -13,7 +13,6 @@ set -uo pipefail
 # Every global that can be read before being assigned on ANY path lives here,
 # and this block runs before argument parsing.
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # root of this setup skill
-CODEX="${SYNESIS_CODEX_BIN:-codex}"
 SKIP_DEPS=0            # --skip-deps
 ALLOW_USER_SITE=0      # --allow-user-site
 CREATE_VAULT=0         # --create-vault (approval to create a missing folder)
@@ -22,11 +21,9 @@ VAULT=""               # raw --vault argument
 VAULT_ABS=""           # normalized absolute path (regardless of existence)
 PENDING=""             # comma-joined confirmation queue (string, never an array)
 DEPS_STATE=pending     # ok | skipped | pending
-INSANE_DIR=""          # insane-search skill directory
-BOOT=""                # bootstrap.sh path
-VER=""; SRC=""         # plugin_probe results
+BOOT=""                # deep-fetch bootstrap.sh path
+DEPS_PY=""             # interpreter that bootstrap.sh installs into
 CONFIG_DIR=""; CONFIG=""
-MANUAL="Run manually: codex plugin add insane-search-codex@gptaku-codex"
 
 # --- reporting helpers -------------------------------------------------------
 ok()   { printf '[ok] %s\n' "$*"; }
@@ -42,7 +39,7 @@ Usage: bash "$SETUP_DIR/scripts/setup.sh" [--vault <path>] [--create-vault] [--a
                        Obsidian vault든 아니든 상관없다. Obsidian은 선택 사항이다.
   --create-vault       --vault 경로가 없으면 만든다 (이 인자 없이는 만들지 않는다)
   --allow-user-site    PEP 668 externally-managed python에서 user-site 설치를 승인한다
-  --skip-deps          insane-search 의존성 단계를 건너뛴다 (config에 deps: "skipped" 기록)
+  --skip-deps          deep-fetch 의존성 단계를 건너뛴다 (config에 deps: "skipped" 기록)
 Exit codes: 0 = 완료, 2 = 사용자 확인 대기(실패 아님), 1 = 치명 실패
 USAGE
 }
@@ -79,151 +76,43 @@ if [ -n "$VAULT" ]; then
     || die "cannot normalize --vault path: $VAULT"
 fi
 
-# --- portable watchdog -------------------------------------------------------
-# This machine has neither `timeout` nor `gtimeout`, so poll the child ourselves.
-run_with_watchdog() {            # $1=seconds $2=label $3=manual-command  rest=command
-  local limit="$1" label="$2" manual="$3"; shift 3
-  local log; log=$(mktemp -t synesis-watchdog) || { fail "cannot create temp file"; return 1; }
-  "$@" </dev/null >"$log" 2>&1 &                 # stdin closed so no TTY prompt can appear
-  local pid=$! waited=0 rc=0
-  while kill -0 "$pid" 2>/dev/null; do
-    if [ "$waited" -ge "$limit" ]; then
-      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-      fail "$label timed out after ${limit}s. $manual"
-      sed 's/^/    /' "$log"; rm -f "$log"; return 124
-    fi
-    sleep 1; waited=$((waited + 1))
-  done
-  wait "$pid"; rc=$?
-  [ "$rc" -ne 0 ] && { fail "$label exited $rc. $manual"; sed 's/^/    /' "$log"; }
-  rm -f "$log"; return "$rc"
-}
-
-# --- step: codex CLI ---------------------------------------------------------
-command -v "$CODEX" >/dev/null 2>&1 || die "codex CLI not found in PATH. Install codex-cli first."
-
-# --- step: marketplace -------------------------------------------------------
-marketplace_present() {   # exit 0 = present, 1 = absent, 3 = cannot parse
-  "$CODEX" plugin marketplace list --json 2>/dev/null | python3 -c '
-import json,sys
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(3)
-names={m.get("name") for m in d.get("marketplaces",[])}
-sys.exit(0 if "gptaku-codex" in names else 1)
-'
-}
-
-mp_present=0
-marketplace_present; mp_rc=$?
-case $mp_rc in
-  0) mp_present=1 ;;
-  1) mp_present=0 ;;
-  *) # --json unsupported or broken: fall back to the human table (header on line 1)
-     if "$CODEX" plugin marketplace list 2>/dev/null | awk 'NR>1 && $1=="gptaku-codex"{f=1} END{exit !f}'; then
-       mp_present=1
-     fi ;;
-esac
-
-if [ "$mp_present" = 1 ]; then
-  skip "marketplace gptaku-codex already registered"
-else
-  mp_out=$("$CODEX" plugin marketplace add https://github.com/fivetaku/gptaku-plugins-codex.git 2>&1) || {
-    printf '%s\n' "$mp_out" | sed 's/^/    /'
-    die "failed to register marketplace gptaku-codex (network?)"
-  }
-  ok "marketplace gptaku-codex registered"
-fi
-
-# --- step: plugin install ----------------------------------------------------
-plugin_probe() {   # exit 0 + stdout "<version>\n<source path>"; 1 = not installed/enabled; 3 = parse error
-  "$CODEX" plugin list --json -m gptaku-codex 2>/dev/null | python3 -c '
-import json,sys
-try: d=json.load(sys.stdin)
-except Exception: sys.exit(3)
-for p in d.get("installed",[]):
-    if p.get("pluginId")=="insane-search-codex@gptaku-codex" and p.get("installed") and p.get("enabled"):
-        print(p.get("version") or "unknown")
-        print(((p.get("source") or {}).get("path")) or "")
-        sys.exit(0)
-sys.exit(1)
-'
-}
-
-read_probe() { VER=$(printf '%s\n' "$1" | sed -n 1p); SRC=$(printf '%s\n' "$1" | sed -n 2p); }
-
-out=$(plugin_probe); case $? in
-  0) read_probe "$out"; skip "insane-search-codex already installed, enabled ($VER)" ;;
-  1) ok "installing insane-search-codex"
-     run_with_watchdog "${SYNESIS_ADD_TIMEOUT:-120}" "codex plugin add" "$MANUAL" \
-       "$CODEX" plugin add insane-search-codex@gptaku-codex \
-       || warn "plugin add did not complete cleanly; re-checking state"
-     out=$(plugin_probe); case $? in
-       0) read_probe "$out"; ok "insane-search-codex installed ($VER)" ;;
-       1) die "insane-search-codex is not installed+enabled after install. $MANUAL" ;;
-       *) die "cannot read codex plugin list output after install. $MANUAL" ;;
-     esac ;;
-  *) die "cannot read codex plugin list output" ;;
-esac
-
-# --- step: locate the insane-search skill directory --------------------------
-cand_list=""
-if [ -n "$SRC" ]; then
-  cand_list="$SRC/skills/insane-search"
-fi
-cache_base="$HOME/.codex/plugins/cache/gptaku-codex/insane-search-codex"
-cache_ver=$(ls -1 "$cache_base" 2>/dev/null | sort -V | tail -n 1)
-if [ -n "$cache_ver" ]; then
-  cand_list="${cand_list:+$cand_list
-}$cache_base/$cache_ver/skills/insane-search"
-fi
-cand_list="${cand_list:+$cand_list
-}$HOME/.codex/.tmp/marketplaces/gptaku-codex/plugins/insane-search-codex/skills/insane-search"
-
-looked=""
-while IFS= read -r cand; do
-  [ -n "$cand" ] || continue
-  looked="${looked:+$looked, }$cand"
-  if [ -f "$cand/SKILL.md" ]; then INSANE_DIR="$cand"; break; fi
-done <<< "$cand_list"
-
-if [ -n "$INSANE_DIR" ]; then
-  ok "insane-search skill found at $INSANE_DIR"
-else
-  die "insane-search SKILL.md not found; looked in: $looked"
-fi
-
 # --- step: dependencies ------------------------------------------------------
+# deep-fetch is a sibling skill in this plugin; its bootstrap.sh checks and installs
+# the Python packages it needs and picks the interpreter (Python 3.10+) to use.
+BOOT="${SYNESIS_BOOTSTRAP:-$SETUP_DIR/../deep-fetch/scripts/bootstrap.sh}"
+[ -f "$BOOT" ] || die "deep-fetch bootstrap.sh not found at $BOOT"
+
 python_externally_managed() {
   # The seam only forces the RESTRICTIVE direction; any other value is ignored.
   [ "${SYNESIS_PYTHON_EXTERNALLY_MANAGED:-}" = 1 ] && return 0
-  python3 -c "import sysconfig,os,sys; sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_path('stdlib'),'EXTERNALLY-MANAGED')) else 1)"
+  "$DEPS_PY" -c "import sysconfig,os,sys; sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_path('stdlib'),'EXTERNALLY-MANAGED')) else 1)"
 }
-
-BOOT="${SYNESIS_BOOTSTRAP:-$INSANE_DIR/scripts/bootstrap.sh}"
-[ -f "$BOOT" ] || die "bootstrap.sh not found at $BOOT"
 
 if [ "$SKIP_DEPS" = 1 ]; then                                          # (0) explicitly skipped
   warn "dependency setup skipped by user (--skip-deps); run manually: PIP_BREAK_SYSTEM_PACKAGES=1 bash \"$BOOT\" --install"
   DEPS_STATE=skipped
+elif ! DEPS_PY=$(bash "$BOOT" --print-python 2>&1); then               # no usable interpreter
+  printf '%s\n' "$DEPS_PY" | sed 's/^/    /'
+  die "deep-fetch needs Python 3.10 or newer. Install one, or rerun with --skip-deps"
 elif check_out=$(bash "$BOOT" 2>&1); then                              # (a) already satisfied
-  skip "insane-search dependencies already satisfied"
+  skip "deep-fetch dependencies already satisfied"
   DEPS_STATE=ok
 elif python_externally_managed && [ "$ALLOW_USER_SITE" != 1 ]; then    # (b) approval needed — no install
   printf '%s\n' "$check_out" | sed 's/^/    /'
-  USER_SITE=$(python3 -m site --user-site 2>/dev/null)
-  warn "python3 is PEP 668 externally-managed; not installing without approval"
+  USER_SITE=$("$DEPS_PY" -m site --user-site 2>/dev/null)
+  warn "$DEPS_PY is PEP 668 externally-managed; not installing without approval"
   warn "approval installs curl_cffi, beautifulsoup4, pyyaml, pypdf, markdownify into user-site ${USER_SITE:-<unresolved>}; Homebrew site-packages are untouched"
   need deps                                                            # DEPS_STATE stays pending
 else                                                                   # (c) install
   printf '%s\n' "$check_out" | sed 's/^/    /'
-  ok "installing insane-search dependencies (may take a few minutes)"
+  ok "installing deep-fetch dependencies (may take a few minutes)"
   TMP=$(mktemp -t synesis-bootstrap) || die "cannot create temp file"
   if [ "$ALLOW_USER_SITE" = 1 ]; then
     PIP_BREAK_SYSTEM_PACKAGES=1 bash "$BOOT" --install 2>&1 | tee "$TMP"; rc=${PIPESTATUS[0]}
   else
     bash "$BOOT" --install 2>&1 | tee "$TMP"; rc=${PIPESTATUS[0]}      # no guard bypass
   fi
-  if [ "$rc" -eq 0 ]; then ok "insane-search dependencies installed"; DEPS_STATE=ok; rm -f "$TMP"
+  if [ "$rc" -eq 0 ]; then ok "deep-fetch dependencies installed"; DEPS_STATE=ok; rm -f "$TMP"
   else sed 's/^/    /' "$TMP"; die "bootstrap.sh --install failed"; fi
 fi
 

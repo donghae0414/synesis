@@ -9,6 +9,11 @@ Knowledge is not what we collect, but what we come to understand.
 
 This skill is the entry point of the Synesis plugin. The reading, discussion, and recording workflow is not defined yet.
 
+## Reading links
+
+When you need the content of a link, follow the `deep-fetch` skill. It reads
+public pages, including pages that block ordinary fetch tools.
+
 ## Writing notes
 
 When you write a note, follow the `plain-korean` skill for every part that you

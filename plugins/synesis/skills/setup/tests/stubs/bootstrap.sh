@@ -1,6 +1,11 @@
 #!/bin/bash
-# Stub for insane-search's bootstrap.sh, reached through SYNESIS_BOOTSTRAP.
+# Stub for deep-fetch's bootstrap.sh, reached through SYNESIS_BOOTSTRAP.
 # bash 3.2 compatible. Environment variables:
+#
+#   STUB_BOOT_PY_RC=<n>       exit code for `--print-python` (default 0). On 0 it
+#                             prints `python3`, so setup.sh probes whichever python3
+#                             is first in PATH; otherwise it prints the "Python 3.10
+#                             or newer not found" message.
 #
 #   STUB_BOOT_CHECK_RC=<n>    exit code for the no-argument prerequisite check
 #                             (default 0). On 0 it prints
@@ -26,6 +31,14 @@ if [ $# -eq 0 ]; then
 fi
 
 case "$1" in
+  --print-python)
+    if [ "${STUB_BOOT_PY_RC:-0}" = 0 ]; then
+      printf 'python3\n'
+      exit 0
+    fi
+    printf 'bootstrap: Python 3.10 or newer not found (python3 is 3.9.6).\n'
+    exit 1
+    ;;
   --install)
     obs="${STUB_BOOT_OBS:-}"
     if [ -n "$obs" ]; then

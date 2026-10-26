@@ -3,9 +3,9 @@
 #
 # Runs under /bin/bash (3.2.57 on macOS): no associative arrays, no mapfile, no
 # empty-array expansion under `set -u`. Everything lives inside ONE mktemp -d root
-# which is removed by the EXIT trap; HOME, XDG_CONFIG_HOME, the codex CLI, the
-# bootstrap script and the Obsidian paths are all redirected into that root, so the
-# real ~/.config/synesis, ~/Library and the real codex binary are never touched.
+# which is removed by the EXIT trap; HOME, XDG_CONFIG_HOME, the deep-fetch bootstrap
+# script and the Obsidian paths are all redirected into that root, so the real
+# ~/.config/synesis, ~/Library and the real Python packages are never touched.
 #
 # Usage: /bin/bash plugins/synesis/skills/setup/tests/run-cases.sh
 # Exit: 0 = every case passed, 1 = at least one case failed.
@@ -13,12 +13,10 @@ set -u
 
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 SETUP="$TESTS_DIR/../scripts/setup.sh"
-STUB_CODEX="$TESTS_DIR/stubs/codex"
 STUB_BOOT="$TESTS_DIR/stubs/bootstrap.sh"
 REAL_PY="$(command -v python3 || true)"
 
 [ -f "$SETUP" ]      || { printf 'cannot find setup.sh at %s\n' "$SETUP" >&2; exit 1; }
-[ -x "$STUB_CODEX" ] || chmod +x "$STUB_CODEX"
 [ -x "$STUB_BOOT" ]  || chmod +x "$STUB_BOOT"
 
 ROOT="$(mktemp -d -t synesis-setup-tests)" || { printf 'mktemp -d failed\n' >&2; exit 1; }
@@ -46,8 +44,7 @@ new_case() {
   OUT=""
   RC=0
   CASEDIR="$ROOT/$CASE"
-  mkdir -p "$CASEDIR/home" "$CASEDIR/xdg" "$CASEDIR/src/skills/insane-search" "$CASEDIR/vault"
-  : > "$CASEDIR/src/skills/insane-search/SKILL.md"
+  mkdir -p "$CASEDIR/home" "$CASEDIR/xdg" "$CASEDIR/vault"
   printf '{"vaults":{}}\n' > "$CASEDIR/obsidian.json"
 
   CASE_HOME="$CASEDIR/home"
@@ -58,28 +55,16 @@ new_case() {
   RUN_CWD="$ROOT"
   PATH_PREFIX=""
 
-  SYNESIS_CODEX_BIN="$STUB_CODEX"
   SYNESIS_BOOTSTRAP="$STUB_BOOT"
   SYNESIS_OBSIDIAN_APP="$CASEDIR/no-such-obsidian-app"
   SYNESIS_OBSIDIAN_JSON="$CASEDIR/obsidian.json"
-  SYNESIS_ADD_TIMEOUT=120
   SYNESIS_PYTHON_EXTERNALLY_MANAGED=""
 
-  STUB_LOG="$CASEDIR/codex.log"
-  : > "$STUB_LOG"
-  STUB_MP_HAS_GPTAKU=1
-  STUB_MP_JSON_BROKEN=0
-  STUB_MP_ADD_RC=0
-  STUB_PLUGIN_STATE=installed
-  STUB_PLUGIN_STATE_AFTER=installed
-  STUB_ADD_MODE=ok
-  STUB_STATE_FILE="$CASEDIR/plugin-state"
-  STUB_SRC_PATH="$CASEDIR/src"
-  STUB_VERSION=0.16.3
+  STUB_BOOT_PY_RC=0
   STUB_BOOT_CHECK_RC=0
   STUB_BOOT_INSTALL_RC=0
   STUB_BOOT_OBS="$CASEDIR/bootstrap-obs"
-  rm -f "$STUB_STATE_FILE" "$STUB_BOOT_OBS"
+  rm -f "$STUB_BOOT_OBS"
 }
 
 # Run setup.sh with the current case's environment. Assignments happen inside the
@@ -91,12 +76,9 @@ sr() {
     export XDG_CONFIG_HOME="$CASE_XDG"
     if [ -n "$PATH_PREFIX" ]; then export PATH="$PATH_PREFIX:$PATH"; fi
     unset PIP_BREAK_SYSTEM_PACKAGES
-    export SYNESIS_CODEX_BIN SYNESIS_BOOTSTRAP SYNESIS_OBSIDIAN_APP SYNESIS_OBSIDIAN_JSON
-    export SYNESIS_ADD_TIMEOUT
-    export STUB_LOG STUB_MP_HAS_GPTAKU STUB_MP_JSON_BROKEN STUB_MP_ADD_RC
-    export STUB_PLUGIN_STATE STUB_PLUGIN_STATE_AFTER STUB_ADD_MODE STUB_STATE_FILE
-    export STUB_SRC_PATH STUB_VERSION
-    export STUB_BOOT_CHECK_RC STUB_BOOT_INSTALL_RC STUB_BOOT_OBS
+    if [ -n "$SYNESIS_BOOTSTRAP" ]; then export SYNESIS_BOOTSTRAP; else unset SYNESIS_BOOTSTRAP; fi
+    export SYNESIS_OBSIDIAN_APP SYNESIS_OBSIDIAN_JSON
+    export STUB_BOOT_PY_RC STUB_BOOT_CHECK_RC STUB_BOOT_INSTALL_RC STUB_BOOT_OBS
     if [ -n "$SYNESIS_PYTHON_EXTERNALLY_MANAGED" ]; then
       export SYNESIS_PYTHON_EXTERNALLY_MANAGED
     else
@@ -121,9 +103,6 @@ count_is() {  # $1 = grep -E pattern, $2 = expected count, $3 = label
   [ "$n" = "$2" ] || err "$3: found $n, expected $2"
 }
 
-log_has()   { grep -q "$1" "$STUB_LOG" 2>/dev/null || err "codex log missing: $1"; }
-log_hasnt() { if grep -q "$1" "$STUB_LOG" 2>/dev/null; then err "codex log should not contain: $1"; fi; }
-
 boot_obs_is() {  # $1 = expected PIP_BREAK_SYSTEM_PACKAGES value written by the bootstrap stub
   if [ -f "$STUB_BOOT_OBS" ]; then
     grep -q "^PIP_BREAK_SYSTEM_PACKAGES=$1$" "$STUB_BOOT_OBS" \
@@ -131,6 +110,19 @@ boot_obs_is() {  # $1 = expected PIP_BREAK_SYSTEM_PACKAGES value written by the 
   else
     err "bootstrap --install never ran (no $STUB_BOOT_OBS)"
   fi
+}
+
+# Puts a python3 wrapper first in PATH that answers setup.sh's EXTERNALLY-MANAGED
+# probe with $1 (0 = externally managed, 1 = not) and delegates everything else.
+fake_python_managed() {
+  mkdir -p "$CASEDIR/bin"
+  {
+    printf '#!/bin/bash\n'
+    printf 'for a in "$@"; do case "$a" in *EXTERNALLY-MANAGED*) exit %s;; esac; done\n' "$1"
+    printf 'exec %s "$@"\n' "$REAL_PY"
+  } > "$CASEDIR/bin/python3"
+  chmod +x "$CASEDIR/bin/python3"
+  PATH_PREFIX="$CASEDIR/bin"
 }
 
 file_exists()  { [ -e "$1" ] || err "expected to exist: $1"; }
@@ -185,109 +177,50 @@ skip_case() {  # $1 = name, $2 = reason
 }
 
 # =============================================================================
-# marketplace
+# deep-fetch bootstrap discovery
 # =============================================================================
-new_case mp_absent_adds
-STUB_MP_HAS_GPTAKU=0
-sr --vault "$VAULTDIR"
-has '[ok] marketplace gptaku-codex registered'
-log_has 'marketplace add'
+new_case bundled_bootstrap_default
+SYNESIS_BOOTSTRAP=""
+sr --skip-deps --vault "$VAULTDIR"
+has 'deep-fetch/scripts/bootstrap.sh'
+BUNDLED=$(cd "$TESTS_DIR/../../deep-fetch/scripts" 2>/dev/null && pwd)/bootstrap.sh
+[ -f "$BUNDLED" ] || err "bundled bootstrap missing at $BUNDLED"
 rc_is 0
 finish
 
-new_case mp_add_fails
-STUB_MP_HAS_GPTAKU=0
-STUB_MP_ADD_RC=1
+new_case bootstrap_missing_exit1
+SYNESIS_BOOTSTRAP="$CASEDIR/no-such-bootstrap.sh"
 sr --vault "$VAULTDIR"
-has '[fail] failed to register marketplace'
+has '[fail] deep-fetch bootstrap.sh not found at'
+file_absent "$(cfg_path)"
 rc_is 1
 finish
 
-new_case mp_json_broken_fallback
-STUB_MP_JSON_BROKEN=1
-STUB_MP_HAS_GPTAKU=1
+new_case no_python310_exit1
+STUB_BOOT_PY_RC=1
 sr --vault "$VAULTDIR"
-has '[skip] marketplace gptaku-codex already registered'
-log_has 'plugin marketplace list$'
-log_hasnt 'marketplace add'
+has 'bootstrap: Python 3.10 or newer not found'
+has '[fail] deep-fetch needs Python 3.10 or newer'
+file_absent "$STUB_BOOT_OBS"
+file_absent "$(cfg_path)"
+rc_is 1
+finish
+
+new_case no_python310_skip_deps_ok
+STUB_BOOT_PY_RC=1
+sr --skip-deps --vault "$VAULTDIR"
+cfg_key_is deps skipped
 rc_is 0
 finish
 
-# =============================================================================
-# plugin install
-# =============================================================================
-new_case plugin_not_installed_adds
-STUB_PLUGIN_STATE=empty
-STUB_PLUGIN_STATE_AFTER=installed
-STUB_ADD_MODE=ok
+new_case codex_never_called
+mkdir -p "$CASEDIR/bin"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$CASEDIR/codex-called" > "$CASEDIR/bin/codex"
+chmod +x "$CASEDIR/bin/codex"
+PATH_PREFIX="$CASEDIR/bin"
 sr --vault "$VAULTDIR"
-has '[ok] installing insane-search-codex'
-has '[ok] insane-search-codex installed (0.16.3)'
-log_has '^plugin add insane-search-codex@gptaku-codex$'
+file_absent "$CASEDIR/codex-called"
 rc_is 0
-finish
-
-new_case post_install_recheck_fails
-STUB_PLUGIN_STATE=empty
-STUB_ADD_MODE=noop
-sr --vault "$VAULTDIR"
-has '[fail] insane-search-codex is not installed+enabled after install.'
-has 'Run manually: codex plugin add insane-search-codex@gptaku-codex'
-rc_is 1
-finish
-
-new_case post_install_parse_fails
-STUB_PLUGIN_STATE=empty
-STUB_PLUGIN_STATE_AFTER=nonjson
-STUB_ADD_MODE=ok
-sr --vault "$VAULTDIR"
-has '[fail] cannot read codex plugin list output after install.'
-hasnt 'is not installed+enabled after install'
-rc_is 1
-finish
-
-new_case plugin_add_hangs_watchdog
-STUB_PLUGIN_STATE=empty
-STUB_ADD_MODE=sleep
-SYNESIS_ADD_TIMEOUT=3
-t0=$(date +%s)
-sr --vault "$VAULTDIR"
-t1=$(date +%s)
-elapsed=$((t1 - t0))
-has 'codex plugin add timed out after 3s.'
-has '[warn] plugin add did not complete cleanly'
-rc_is 1
-[ "$elapsed" -lt 30 ] || err "watchdog took ${elapsed}s, expected under 30s"
-finish
-
-new_case version_missing_unknown
-STUB_PLUGIN_STATE=noversion
-sr --vault "$VAULTDIR"
-has '[skip] insane-search-codex already installed, enabled (unknown)'
-log_hasnt '^plugin add '
-rc_is 0
-finish
-
-# =============================================================================
-# insane-search skill directory discovery
-# =============================================================================
-new_case cache_fallback
-STUB_SRC_PATH=""
-CACHE_SKILL="$CASE_HOME/.codex/plugins/cache/gptaku-codex/insane-search-codex/0.16.3/skills/insane-search"
-mkdir -p "$CACHE_SKILL"
-: > "$CACHE_SKILL/SKILL.md"
-sr --vault "$VAULTDIR"
-has "[ok] insane-search skill found at $CACHE_SKILL"
-rc_is 0
-finish
-
-new_case skill_md_missing
-mkdir -p "$CASEDIR/src-no-skill/skills/insane-search"
-STUB_SRC_PATH="$CASEDIR/src-no-skill"
-sr --vault "$VAULTDIR"
-has '[fail] insane-search SKILL.md not found; looked in:'
-has "$CASEDIR/src-no-skill/skills/insane-search"
-rc_is 1
 finish
 
 # =============================================================================
@@ -308,7 +241,7 @@ STUB_BOOT_CHECK_RC=1
 STUB_BOOT_INSTALL_RC=0
 SYNESIS_PYTHON_EXTERNALLY_MANAGED=1
 sr --allow-user-site --vault "$VAULTDIR"
-has '[ok] insane-search dependencies installed'
+has '[ok] deep-fetch dependencies installed'
 hasnt 'NEEDS_CONFIRMATION: deps'
 boot_obs_is 1
 cfg_key_is deps ok
@@ -325,10 +258,12 @@ rc_is 1
 finish
 
 new_case consent_bypass_impossible
-# The seam only forces the restrictive direction, so 0 is ignored and the real
-# python3 on this machine (Homebrew, PEP 668 externally-managed) is probed.
+# The seam only forces the restrictive direction, so 0 is ignored and the python3
+# that bootstrap reports is probed. The wrapper makes that python3 externally
+# managed, so the case does not depend on which Python this machine has.
 STUB_BOOT_CHECK_RC=1
 SYNESIS_PYTHON_EXTERNALLY_MANAGED=0
+fake_python_managed 0
 sr --vault "$VAULTDIR"
 has 'NEEDS_CONFIRMATION: deps'
 has '[warn] python3 is PEP 668 externally-managed; not installing without approval'
@@ -343,18 +278,10 @@ STUB_BOOT_INSTALL_RC=0
 if [ -z "$REAL_PY" ]; then
   skip_case non_externally_managed_install "no python3 on PATH to wrap"
 else
-  mkdir -p "$CASEDIR/bin"
-  {
-    printf '#!/bin/bash\n'
-    printf '# Answers setup.sh EXTERNALLY-MANAGED probe with 1, delegates everything else.\n'
-    printf 'for a in "$@"; do case "$a" in *EXTERNALLY-MANAGED*) exit 1;; esac; done\n'
-    printf 'exec %s "$@"\n' "$REAL_PY"
-  } > "$CASEDIR/bin/python3"
-  chmod +x "$CASEDIR/bin/python3"
-  PATH_PREFIX="$CASEDIR/bin"
+  fake_python_managed 1
   sr --vault "$VAULTDIR"
-  has '[ok] installing insane-search dependencies'
-  has '[ok] insane-search dependencies installed'
+  has '[ok] installing deep-fetch dependencies'
+  has '[ok] deep-fetch dependencies installed'
   hasnt 'NEEDS_CONFIRMATION: deps'
   boot_obs_is unset
   cfg_key_is deps ok
@@ -506,13 +433,6 @@ finish
 # =============================================================================
 # argument handling
 # =============================================================================
-new_case codex_absent
-SYNESIS_CODEX_BIN="/nonexistent/codex"
-sr --vault "$VAULTDIR"
-has '[fail] codex CLI not found in PATH'
-rc_is 1
-finish
-
 new_case help_exit0
 sr --help
 has 'Usage: bash'

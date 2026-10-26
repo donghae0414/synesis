@@ -1,0 +1,30 @@
+{
+  "name": "synesis",
+  "version": "0.2.0",
+  "description": "Read links and texts together, discuss them, and record what they meant to you as a growing body of knowledge.",
+  "keywords": [
+    "pi-package",
+    "knowledge",
+    "notes",
+    "reading",
+    "web-fetch"
+  ],
+  "author": "dongwuk",
+  "license": "MIT",
+  "homepage": "https://github.com/donghae0414/synesis",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/donghae0414/synesis.git"
+  },
+  "files": [
+    "plugins/synesis/skills",
+    "LICENSE",
+    "README.md",
+    "README.ko.md"
+  ],
+  "pi": {
+    "skills": [
+      "./plugins/synesis/skills"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "synesis",
-  "version": "0.1.0+codex.20260919173305",
+  "version": "0.2.0",
   "description": "Read links and texts together, discuss them, and record what they meant to you as a growing body of knowledge.",
   "author": {
     "name": "dongwuk"
@@ -13,9 +13,15 @@
     "codex-plugin",
     "knowledge",
     "notes",
-    "reading"
+    "reading",
+    "web-fetch"
   ],
   "skills": "./skills/",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md"
+    }
+  },
   "interface": {
     "displayName": "Synesis",
     "shortDescription": "Knowledge that grows through conversation",

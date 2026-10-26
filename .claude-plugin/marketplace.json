@@ -1,0 +1,14 @@
+{
+  "name": "synesis",
+  "description": "Synesis, a personal knowledge system that grows through conversation.",
+  "owner": {
+    "name": "dongwuk"
+  },
+  "plugins": [
+    {
+      "name": "synesis",
+      "source": "./plugins/synesis",
+      "description": "Read links and texts together, discuss them, and record what they meant to you as a growing body of knowledge."
+    }
+  ]
+}
