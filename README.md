@@ -40,8 +40,10 @@ After you install, ask your agent to "set up synesis". The setup skill:
 
 - checks the Python packages that `deep-fetch` needs and installs them (it asks first
   if your Python is externally managed),
-- detects your Obsidian vaults or lets you pick any notes folder (Obsidian is
-  optional),
+- suggests a fresh notes folder, `~/Documents/synesis`, as the default, and lists your
+  Obsidian vaults or any other folder as alternatives (Obsidian is optional). Starting
+  fresh keeps Synesis notes apart from existing ones; you can bring older notes in
+  later, one request at a time,
 - records the confirmed folder in `~/.config/synesis/config.json`.
 
 `deep-fetch` needs Python 3.10 or newer. The default `python3` on macOS is 3.9, so

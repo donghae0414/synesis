@@ -40,7 +40,9 @@ pi install git:github.com/donghae0414/synesis
 
 - `deep-fetch`에 필요한 Python 패키지를 확인하고 설치합니다(Python이 externally-managed 환경이면 먼저
   동의를 구합니다).
-- Obsidian vault를 감지하거나, 원하는 노트 폴더를 직접 지정하게 합니다(Obsidian은 선택 사항입니다).
+- 새 노트 폴더 `~/Documents/synesis`를 기본값으로 제안하고, 등록된 Obsidian vault나 원하는 다른 폴더를
+  선택지로 보여줍니다(Obsidian은 선택 사항입니다). 새 폴더에서 시작하면 기존 노트와 섞이지 않고,
+  기존 노트는 필요할 때 하나씩 가져오면 됩니다.
 - 확인된 폴더를 `~/.config/synesis/config.json`에 기록합니다.
 
 `deep-fetch`는 Python 3.10 이상이 필요합니다. macOS 기본 `python3`는 3.9이므로, 새 버전이 없으면

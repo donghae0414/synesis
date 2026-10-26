@@ -19,6 +19,7 @@ CREATE_VAULT=0         # --create-vault (approval to create a missing folder)
 CREATE_PENDING=0       # 1 = waiting on create-dir approval -> do not write config
 VAULT=""               # raw --vault argument
 VAULT_ABS=""           # normalized absolute path (regardless of existence)
+DEFAULT_VAULT="$HOME/Documents/synesis"   # fresh notes folder suggested first when --vault is absent
 PENDING=""             # comma-joined confirmation queue (string, never an array)
 DEPS_STATE=pending     # ok | skipped | pending
 BOOT=""                # deep-fetch bootstrap.sh path
@@ -135,7 +136,7 @@ for v in (d.get("vaults") or {}).values():
 PY
 )
 while IFS= read -r cline; do
-  [ -n "$cline" ] && printf 'candidate: %s\n' "$cline"
+  [ -n "$cline" ] && [ "$cline" != "$DEFAULT_VAULT" ] && printf 'candidate: %s\n' "$cline"
 done <<< "$candidates"
 
 # --- step: vault decision ----------------------------------------------------
@@ -147,6 +148,7 @@ resolve_dir() {                    # $1 = path. stdout = physical path; stderr =
 }
 
 if [ -z "$VAULT" ]; then
+  printf 'default: %s\n' "$DEFAULT_VAULT"
   need vault
   printf 'NEEDS_VAULT_CONFIRMATION\n'
 else

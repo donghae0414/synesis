@@ -375,7 +375,41 @@ printf '{"vaults":{"a":{"path":"%s"},"b":{"path":"%s"}}}\n' "$CASEDIR/v1" "$CASE
   > "$CASEDIR/obsidian.json"
 sr
 count_is '^candidate: ' 2 'candidate lines'
+count_is '^default: ' 1 'default lines'
 rc_is 2
+finish
+
+new_case default_suggested_without_vault
+sr
+has "default: $CASE_HOME/Documents/synesis"
+has 'NEEDS_CONFIRMATION: vault'
+dir_absent "$CASE_HOME/Documents/synesis"
+file_absent "$(cfg_path)"
+rc_is 2
+finish
+
+new_case default_not_printed_with_vault
+sr --vault "$VAULTDIR"
+hasnt 'default: '
+rc_is 0
+finish
+
+new_case default_not_repeated_as_candidate
+mkdir -p "$CASE_HOME/Documents/synesis" "$CASEDIR/v1"
+printf '{"vaults":{"a":{"path":"%s"},"b":{"path":"%s"}}}\n' "$CASE_HOME/Documents/synesis" "$CASEDIR/v1" \
+  > "$CASEDIR/obsidian.json"
+sr
+count_is '^candidate: ' 1 'candidate lines'
+has "candidate: $CASEDIR/v1"
+has "default: $CASE_HOME/Documents/synesis"
+rc_is 2
+finish
+
+new_case default_chosen_creates_and_records
+sr --vault "$CASE_HOME/Documents/synesis" --create-vault
+[ -d "$CASE_HOME/Documents/synesis" ] || err "default folder was not created"
+cfg_key_is vault "$(cd "$CASE_HOME/Documents/synesis" 2>/dev/null && pwd -P)"
+rc_is 0
 finish
 
 # =============================================================================
